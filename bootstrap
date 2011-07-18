@@ -1,0 +1,60 @@
+var fs = require('fs')
+var vm = require('vm')
+
+
+var obj_each = function(fun) {
+	for(var i in this) {
+		if(this.hasOwnProperty(i))
+			fun(i, this[i], this) } }
+
+var arr_each = function(fun) {
+	for(var i = 0 ; i < this.length ; ++i) {
+		fun(i, this[i], this) } }
+
+
+Object.defineProperty(Object.prototype, 'each', { value: obj_each })
+Object.defineProperty(Array.prototype, 'each', { value: arr_each })
+
+var list = {}
+var builtin = ['fs', 'vm', 'http', 'net']
+
+builtin.each(function(k, v) {
+	list[v] = require(v) })
+
+list['console'] = console
+
+var wrap = function(code) {
+	return '(function(module) {' + code + '})(boostrap_module)' }
+
+
+boostrap_module = function(id, options, payload) {
+
+	if(options.depends) options.depends.each = arr_each
+	else options.depends = []
+
+	options.depends.each(function(k, v) {
+		if(list[v] != undefined) return
+
+		var code = wrap(fs.readFileSync('./' + v, 'utf-8'))
+		
+		vm.runInThisContext(code, v) })
+
+
+	if(typeof payload == 'function') {
+		var pot = {}
+
+		options.depends.each(function(k, v) {
+			pot[v] = list[v] })
+
+		var require = function(id) { return pot[id] }
+
+		payload = payload(require) }
+
+	list[id] = payload }
+
+
+if(process.argv.length > 2) {
+	var code_path = process.argv[2]
+	var code = wrap(fs.readFileSync('./' + code_path, 'utf-8'))
+	vm.runInThisContext(code, 'entry-point')
+} else console.log('Usage: ' + process.argv[0] + ' ' + process.argv[1] + ' path/to/the/main/module')
